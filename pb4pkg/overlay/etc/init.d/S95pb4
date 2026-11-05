@@ -1,0 +1,32 @@
+#!/bin/sh
+# S95pb4 -- Vatilon PB4 pin setup for the IR-cut filter and lamps, before Raptor.
+#
+# GPIO0/1 pads default to PWM6/PWM7 and GPIO26 to SADC; mux them to GPIO,
+# park both coil pins low and hold the IR-cut rail (GPIO26) high. ric
+# drives the pulses. This kernel names exported pins GPIO<N>.
+
+case "$1" in
+start)
+	devmem 0xF0000114 32 0x01001100
+	devmem 0xF0000118 32 0x01001100
+	devmem 0xF000016C 32 0x01001000
+	for p in 0 1 26; do
+		[ -d /sys/class/gpio/GPIO$p ] || [ -d /sys/class/gpio/gpio$p ] ||
+			echo $p > /sys/class/gpio/export
+	done
+	for p in 0 1; do
+		d=/sys/class/gpio/GPIO$p; [ -d $d ] || d=/sys/class/gpio/gpio$p
+		echo low > $d/direction
+	done
+	d=/sys/class/gpio/GPIO26; [ -d $d ] || d=/sys/class/gpio/gpio26
+	echo high > $d/direction
+	# Both lamps off: white on PWM 2, IR on PWM 3 (this housing). ric
+	# lights the IR when it decides night; nothing else should own them.
+	for c in 2 3; do
+		echo "$c,12,0,10000,0,0,0,0" > /proc/driver/pwm 2>/dev/null
+	done
+	echo "PB4: IR-cut pins ready, lamps off"
+	;;
+stop) ;;
+*) echo "Usage: $0 {start|stop}"; exit 1 ;;
+esac
