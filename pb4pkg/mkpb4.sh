@@ -38,8 +38,16 @@ overlay() {
     cp "$R/rhd/portal.html" "$OVL/usr/share/raptor/"
     cp -L "$PB4/raptor/raptor-common/librss_common.so" "$PB4/raptor/raptor-ipc/librss_ipc.so" "$OVL/usr/lib/"
     cp -L "$(find "$OUT/host/arm-openipc-linux-musleabi/sysroot" -name 'libatomic.so.1' | head -1)" "$OVL/usr/lib/"
-    $B-strip "$OVL"/usr/bin/* "$OVL"/usr/lib/*
+    # Motion white light: wlight samples the sub-stream (rvd save raw),
+    # ydiff compares frames, lamp drives the white LEDs.
+    $B-gcc -O2 -Wall -o "$OVL/usr/bin/ydiff" "$PKG/src/ydiff.c"
+    $B-strip "$OVL"/usr/bin/rvd "$OVL"/usr/bin/rsd "$OVL"/usr/bin/ric "$OVL"/usr/bin/raptorctl \
+        "$OVL"/usr/bin/rhd "$OVL"/usr/bin/rcd "$OVL"/usr/bin/ydiff "$OVL"/usr/lib/*
     chmod 644 "$OVL"/usr/share/raptor/*
+
+    cp "$PKG/overlay/usr/bin/lamp" "$PKG/overlay/usr/bin/wlight" "$OVL/usr/bin/"
+    cp "$PKG/overlay/etc/wlight.conf" "$OVL/etc/wlight.conf"
+    cp "$PKG/overlay/etc/init.d/S97wlight" "$OVL/etc/init.d/S97wlight"
 
     cp "$PKG/overlay/etc/raptor.conf" "$OVL/etc/raptor.conf"
     cp "$PKG/overlay/etc/init.d/S95pb4" "$OVL/etc/init.d/S95pb4"
@@ -58,15 +66,13 @@ image() {
     overlay
     T=$OUT/target
 
-    echo ">>> installing into $T"
-    cp -a "$OVL"/. "$T"/
-
     # This Buildroot tree carries whichever streamer it was configured with
     # (Majestic upstream, Divinus on the PB4 branch). Both open the sensor
     # and the encoder, so neither may start beside rvd. Their binaries,
     # configs and init scripts go; anything else of theirs is listed.
-    # wlight is the Divinus-era white-light daemon: without Divinus it
-    # leaves the white LEDs on (bench, 2026-11-05).
+    # The Divinus-era wlight left the white LEDs on without Divinus (bench,
+    # 2026-11-05). It is removed first; the overlay then installs the Raptor
+    # wlight (rvd-sampled motion) in its place.
     echo ">>> removing other streamers and their helpers (majestic, divinus, wlight)"
     for n in majestic divinus wlight; do
         rm -f "$T/usr/bin/$n" "$T/etc/$n.yaml" "$T/etc/$n.conf" "$T/etc/init.d/"S??"$n"
@@ -79,6 +85,9 @@ image() {
     fi
     echo "  init scripts now in the image:"
     ls "$T/etc/init.d" | tr '\n' ' ' | sed 's/^/    /'; echo
+
+    echo ">>> installing into $T"
+    cp -a "$OVL"/. "$T"/
 
     echo ">>> load_fullhan: 64M VMM pool at 0xA2000000"
     L=$T/usr/bin/load_fullhan

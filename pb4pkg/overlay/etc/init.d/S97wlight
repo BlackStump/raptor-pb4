@@ -1,0 +1,23 @@
+#!/bin/sh
+# S97wlight -- motion white light (opt-in: runs only if /etc/wlight.conf exists)
+
+PIDFILE=/var/run/wlight.pid
+
+start() {
+	[ -f /etc/wlight.conf ] || exit 0
+	printf "Starting wlight: "
+	start-stop-daemon -S -b -m -p "$PIDFILE" -x /usr/bin/wlight && echo "OK" || echo "FAIL"
+}
+
+stop() {
+	printf "Stopping wlight: "
+	start-stop-daemon -K -q -p "$PIDFILE" -s TERM && echo "OK" || echo "not running"
+	rm -f "$PIDFILE"
+}
+
+case "$1" in
+start) start ;;
+stop) stop ;;
+restart|reload) stop; sleep 2; start ;;
+*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

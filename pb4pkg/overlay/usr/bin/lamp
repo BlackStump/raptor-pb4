@@ -1,0 +1,36 @@
+#!/bin/sh
+# lamp -- PB4 lamps on Fullhan's PWM driver (/proc/driver/pwm).
+#
+#   lamp white <0-100>   white LEDs, percent
+#   lamp ir <0-100>      IR LEDs, percent (ric normally drives these)
+#   lamp off             both off
+#   lamp status          what the driver holds for both channels
+#
+# Channels depend on the housing's LED board: this housing has white on
+# PWM 2 and IR on PWM 3. Override in /etc/lamp.conf (WHITE_PWM=, IR_PWM=).
+# Each write is "<chn>,<mask>,<duty_ns>,<period_ns>,0,0,0,0"; mask 12 enables
+# channels 2 and 3, period 10000 ns.
+
+WHITE_PWM=2
+IR_PWM=3
+MASK=12
+PERIOD=10000
+[ -f /etc/lamp.conf ] && . /etc/lamp.conf
+
+set_pwm() { # channel percent
+	p=$2
+	[ "$p" -lt 0 ] 2>/dev/null && p=0
+	[ "$p" -gt 100 ] 2>/dev/null && p=100
+	echo "$1,$MASK,$((PERIOD * p / 100)),$PERIOD,0,0,0,0" > /proc/driver/pwm
+}
+
+case "$1" in
+white) set_pwm "$WHITE_PWM" "${2:-0}" ;;
+ir)    set_pwm "$IR_PWM" "${2:-0}" ;;
+off)   set_pwm "$WHITE_PWM" 0; set_pwm "$IR_PWM" 0 ;;
+status)
+	grep -E "id: ($WHITE_PWM|$IR_PWM)[^0-9]" /proc/driver/pwm |
+		sed -e "s/id: $WHITE_PWM\b/white (pwm $WHITE_PWM)/" -e "s/id: $IR_PWM\b/ir (pwm $IR_PWM)/"
+	;;
+*) echo "usage: lamp white|ir <0-100> | off | status"; exit 1 ;;
+esac
