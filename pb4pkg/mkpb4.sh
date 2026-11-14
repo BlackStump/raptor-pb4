@@ -4,8 +4,9 @@
 #   sh mkpb4.sh overlay    build rvd/rsd/ric/raptorctl and assemble the
 #                          overlay tree in $OVL (nothing else touched)
 #   sh mkpb4.sh image      overlay + install it into the Buildroot target,
-#                          remove Majestic, set the 64M VMM pool in
-#                          load_fullhan, and regenerate the images
+#                          remove Majestic, and regenerate the images
+#                          (load_fullhan stays the package's: 90M pool
+#                          above mem=36M)
 #
 # Daemons: rvd rsd ric (video, RTSP, day/night), rhd + rcd (web console on
 # :8080 with config editing), raptorctl (CLI, also used by the init script).
@@ -140,20 +141,6 @@ image() {
     esac
     grep '^BR2_ROOTFS_OVERLAY=' "$OUT/.config" | sed 's/^/  /'
 
-    echo ">>> load_fullhan: 64M VMM pool at 0xA2000000"
-    # From the package's own copy (the merge above would put it back over
-    # an edit in $T), edited into the overlay so the edit is what ships.
-    L=$(find "$OUT/per-package" -path '*/target/usr/bin/load_fullhan' 2>/dev/null | head -1)
-    [ -n "$L" ] || L=$T/usr/bin/load_fullhan
-    if [ -f "$L" ]; then
-        sed 's/mmz=anonymous,0,0x[0-9A-Fa-f]*,[0-9]*M/mmz=anonymous,0,0xA2000000,64M/' "$L" > "$OVL/usr/bin/load_fullhan"
-        chmod +x "$OVL/usr/bin/load_fullhan"
-        cp "$OVL/usr/bin/load_fullhan" "$T/usr/bin/load_fullhan"
-        grep -n 'mmz=' "$OVL/usr/bin/load_fullhan" | sed 's/^/  /'
-    else
-        echo "  load_fullhan not found -- set the pool by hand"
-    fi
-
     echo ">>> regenerating images"
     make -C "$OUT" > /tmp/mkpb4-image.log 2>&1 ||
         { echo "image build failed -- see /tmp/mkpb4-image.log"; tail -20 /tmp/mkpb4-image.log; exit 1; }
@@ -177,8 +164,17 @@ image() {
     else
         cmp -s "$OVL/etc/init.d/S96onvifserver" "$T/etc/init.d/S96onvifserver"
     fi || { echo "  FAIL: S96onvifserver is the package's, not ours"; bad=1; }
-    grep -q 'mmz=anonymous,0,0xA2000000,64M' "$T/usr/bin/load_fullhan" ||
-        { echo "  FAIL: load_fullhan in the target has not the 64M pool"; bad=1; }
+    # load_fullhan ships as the package has it: its active pool, 90M at
+    # 0xA2400000, sits just above the kernel's mem=36M (0xA0000000 +
+    # 36M). The old 64M-at-0xA2000000 edit put the pool inside the
+    # kernel's memory ("map address 0xA2000000 in kernel range!", rvd
+    # down); it only ever shipped once the overlay made it stick.
+    base=$(sed -n 's/^[ \t]*insmod vmm.ko mmz=anonymous,0,\(0x[0-9A-Fa-f]*\),.*/\1/p' "$T/usr/bin/load_fullhan" | head -1)
+    if [ -z "$base" ] || [ $((base)) -lt $((0xA0000000 + 36 * 1024 * 1024)) ]; then
+        echo "  FAIL: load_fullhan's VMM pool (${base:-none}) is not above mem=36M (0xA2400000)"; bad=1
+    else
+        echo "  VMM pool at $base (mem=36M ends at 0xA2400000)"
+    fi
     # busybox httpd runs CGI under /onvif/ only with OpenIPC's patch
     grep -q 'onvif/' "$T/bin/busybox" || { echo "  FAIL: busybox httpd has no /onvif/ CGI support"; bad=1; }
     [ $bad = 0 ] && echo "  ok"
