@@ -130,8 +130,7 @@ delete the overlay copy (`rm /overlay/root/etc/raptor.conf`), not
 
 ## ONVIF
 
-Off by default. `[onvif] enabled = true` in `/etc/raptor.conf`, then
-`/etc/init.d/S96onvifserver restart` (or reboot), and NVRs find the camera
+On by default, so NVRs find the camera
 with auto search (WS-Discovery) or add it by IP on port 80, as Vatilon PB4-Raptor.
 
 It is OpenIPC's `onvif-simple-server` package: `onvif_simple_server` as CGI
@@ -144,13 +143,13 @@ files as raptor-xm550's, with PB4 defaults.
 
 ## Motion events
 
-Off by default. The FH8856V200 has no motion engine Raptor can use, so
+On by default. The FH8856V200 has no motion engine Raptor can use, so
 `rvd` compares the sub-stream's frames itself and `rmd` keeps
 `/tmp/onvif_notify_server/motion_alarm` while there is motion. With ONVIF
 on, `onvif_notify_server` turns that file into ONVIF motion events the way
 the stock PB4 sends them (`RuleEngine/CellMotionDetector/Motion`,
-`IsMotion`). `[motion] enabled = true`, then restart `S96raptor` and
-`S96onvifserver`. `wlight` keeps its own detection for the white LEDs.
+`IsMotion`). To turn it off, `[motion] enabled = false`, then restart
+`S96raptor` and `S96onvifserver`. `wlight` keeps its own detection for the white LEDs.
 
 ## Files
 
