@@ -108,19 +108,50 @@ image() {
     make -C "$OUT" olddefconfig > /dev/null
     grep -q '^BR2_PACKAGE_ONVIF_SIMPLE_SERVER=y' "$OUT/.config" ||
         { echo "  could not select BR2_PACKAGE_ONVIF_SIMPLE_SERVER"; exit 1; }
+    # utils.c includes zlib.h whether or not USE_ZLIB is set, and the
+    # package lists only mbedtls: with per-package directories there is
+    # no zlib.h to find. The include goes under USE_ZLIB (patch 03, put
+    # into the tree's package directory; a rebuild then picks it up).
+    PD=$OUT/../general/package/onvif-simple-server
+    PF=03-zlib-only-with-USE_ZLIB.patch
+    if [ -d "$PD" ] && ! cmp -s "$PKG/patches/onvif-simple-server-$PF" "$PD/$PF"; then
+        cp "$PKG/patches/onvif-simple-server-$PF" "$PD/$PF"
+        make -C "$OUT" onvif-simple-server-dirclean > /dev/null
+        echo "  $PF added to $PD"
+    fi
     make -C "$OUT" onvif-simple-server > /tmp/mkpb4-onvif.log 2>&1 ||
         { echo "onvif-simple-server failed -- see /tmp/mkpb4-onvif.log"; tail -20 /tmp/mkpb4-onvif.log; exit 1; }
 
     echo ">>> installing into $T"
     cp -a "$OVL"/. "$T"/
 
+    # This tree builds with per-package directories: the final make
+    # merges every package's own target files into $T, over what was
+    # copied in above (onvif-simple-server's init script and CGI links
+    # among them). A rootfs overlay is applied after that merge, so the
+    # overlay is also listed there and its files are the ones that ship.
+    echo ">>> the overlay: added to BR2_ROOTFS_OVERLAY (applied after the packages)"
+    cur=$(sed -n 's/^BR2_ROOTFS_OVERLAY="\(.*\)"$/\1/p' "$OUT/.config")
+    case " $cur " in
+    *" $OVL "*) ;;
+    *) sed -i "/^BR2_ROOTFS_OVERLAY=/d" "$OUT/.config"
+       echo "BR2_ROOTFS_OVERLAY=\"$cur $OVL\"" >> "$OUT/.config"
+       make -C "$OUT" olddefconfig > /dev/null ;;
+    esac
+    grep '^BR2_ROOTFS_OVERLAY=' "$OUT/.config" | sed 's/^/  /'
+
     echo ">>> load_fullhan: 64M VMM pool at 0xA2000000"
-    L=$T/usr/bin/load_fullhan
+    # From the package's own copy (the merge above would put it back over
+    # an edit in $T), edited into the overlay so the edit is what ships.
+    L=$(find "$OUT/per-package" -path '*/target/usr/bin/load_fullhan' 2>/dev/null | head -1)
+    [ -n "$L" ] || L=$T/usr/bin/load_fullhan
     if [ -f "$L" ]; then
-        sed -i 's/mmz=anonymous,0,0x[0-9A-Fa-f]*,[0-9]*M/mmz=anonymous,0,0xA2000000,64M/' "$L"
-        grep -n 'mmz=' "$L" | sed 's/^/  /'
+        sed 's/mmz=anonymous,0,0x[0-9A-Fa-f]*,[0-9]*M/mmz=anonymous,0,0xA2000000,64M/' "$L" > "$OVL/usr/bin/load_fullhan"
+        chmod +x "$OVL/usr/bin/load_fullhan"
+        cp "$OVL/usr/bin/load_fullhan" "$T/usr/bin/load_fullhan"
+        grep -n 'mmz=' "$OVL/usr/bin/load_fullhan" | sed 's/^/  /'
     else
-        echo "  $L not found -- set the pool by hand"
+        echo "  load_fullhan not found -- set the pool by hand"
     fi
 
     echo ">>> regenerating images"
@@ -128,7 +159,7 @@ image() {
         { echo "image build failed -- see /tmp/mkpb4-image.log"; tail -20 /tmp/mkpb4-image.log; exit 1; }
     ls -l "$OUT/images/"
 
-    echo ">>> checking ONVIF in the target"
+    echo ">>> checking the target (ONVIF, VMM pool)"
     bad=0
     for f in usr/sbin/onvif_simple_server usr/sbin/wsd_simple_server \
              var/www/onvif/device_service_files/GetDeviceInformation.xml; do
@@ -146,6 +177,8 @@ image() {
     else
         cmp -s "$OVL/etc/init.d/S96onvifserver" "$T/etc/init.d/S96onvifserver"
     fi || { echo "  FAIL: S96onvifserver is the package's, not ours"; bad=1; }
+    grep -q 'mmz=anonymous,0,0xA2000000,64M' "$T/usr/bin/load_fullhan" ||
+        { echo "  FAIL: load_fullhan in the target has not the 64M pool"; bad=1; }
     # busybox httpd runs CGI under /onvif/ only with OpenIPC's patch
     grep -q 'onvif/' "$T/bin/busybox" || { echo "  FAIL: busybox httpd has no /onvif/ CGI support"; bad=1; }
     [ $bad = 0 ] && echo "  ok"

@@ -1,0 +1,14 @@
+diff --git a/utils.c b/utils.c
+index 3492688..91621cd 100644
+--- a/utils.c
++++ b/utils.c
+@@ -46,7 +46,9 @@
+ #endif
+ #endif
+ 
++#ifdef USE_ZLIB
+ #include <zlib.h>
++#endif
+ 
+ #include "utils.h"
+ #include "onvif_simple_server.h"
