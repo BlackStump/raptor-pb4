@@ -42,7 +42,7 @@ http_port=$(cfg http port 8080)
 
 umask 077
 {
-	echo "model=$(cfg onvif model PB4)"
+	echo "model=$(cfg onvif model PB4-Raptor)"
 	echo "manufacturer=$(cfg onvif manufacturer Vatilon)"
 	echo "firmware_ver=Raptor OpenIPC ${fw:-unknown}"
 	echo "hardware_id=${soc:-fh8856v200}"

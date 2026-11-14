@@ -132,7 +132,7 @@ delete the overlay copy (`rm /overlay/root/etc/raptor.conf`), not
 
 Off by default. `[onvif] enabled = true` in `/etc/raptor.conf`, then
 `/etc/init.d/S96onvifserver restart` (or reboot), and NVRs find the camera
-with auto search (WS-Discovery) or add it by IP on port 80, as Vatilon PB4.
+with auto search (WS-Discovery) or add it by IP on port 80, as Vatilon PB4-Raptor.
 
 It is OpenIPC's `onvif-simple-server` package: `onvif_simple_server` as CGI
 under a busybox httpd of its own, serving only `/onvif/`, and
