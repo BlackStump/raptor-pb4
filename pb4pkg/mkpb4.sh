@@ -52,6 +52,10 @@ overlay() {
     cp "$PKG/overlay/etc/init.d/S97wlight" "$OVL/etc/init.d/S97wlight"
 
     cp "$PKG/overlay/etc/raptor.conf" "$OVL/etc/raptor.conf"
+    # fw_printenv's map of the U-Boot env (mtd1, 64K): OpenIPC's get_mac
+    # reads ethaddr through it, and without it eth0 gets a random MAC
+    # instead of the one mkpb4full.sh put in the env
+    cp "$PKG/overlay/etc/fw_env.config" "$OVL/etc/fw_env.config"
     cp "$PKG/overlay/etc/init.d/S95pb4" "$OVL/etc/init.d/S95pb4"
     # Raptor's own init script, run last: after the vendor modules and the
     # PB4 pin setup. rvd first, then rsd and ric; daemons not installed
@@ -195,6 +199,8 @@ image() {
     else
         echo "  VMM pool at $base (mem=36M ends at 0xA2400000)"
     fi
+    grep -q '^/dev/mtd1[[:space:]]' "$T/etc/fw_env.config" 2>/dev/null ||
+        { echo "  FAIL: /etc/fw_env.config does not map the env (mtd1); MACs would be random"; bad=1; }
     # busybox httpd runs CGI under /onvif/ only with OpenIPC's patch
     grep -q 'onvif/' "$T/bin/busybox" || { echo "  FAIL: busybox httpd has no /onvif/ CGI support"; bad=1; }
     [ $bad = 0 ] && echo "  ok"
