@@ -142,6 +142,16 @@ under a busybox httpd of its own, serving only `/onvif/`, and
 from `[rtsp]` as the ONVIF login (open while that is unset). The same
 files as raptor-xm550's, with PB4 defaults.
 
+## Motion events
+
+Off by default. The FH8856V200 has no motion engine Raptor can use, so
+`rvd` compares the sub-stream's frames itself and `rmd` keeps
+`/tmp/onvif_notify_server/motion_alarm` while there is motion. With ONVIF
+on, `onvif_notify_server` turns that file into ONVIF motion events the way
+the stock PB4 sends them (`RuleEngine/CellMotionDetector/Motion`,
+`IsMotion`). `[motion] enabled = true`, then restart `S96raptor` and
+`S96onvifserver`. `wlight` keeps its own detection for the white LEDs.
+
 ## Files
 
 - `pb4pkg/overlay/etc/raptor.conf` - PB4 config: streams, IR-cut, IR PWM,

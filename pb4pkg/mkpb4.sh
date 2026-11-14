@@ -23,15 +23,15 @@ OVL=$PB4/pb4-overlay
 B=$OUT/host/bin/arm-openipc-linux-musleabi
 
 overlay() {
-    echo ">>> building rvd rsd ric raptorctl rhd rcd"
-    (cd "$R" && ./build.sh fh8856v200 "$OUT" rvd rsd ric raptorctl rhd rcd > /tmp/mkpb4-build.log 2>&1) ||
+    echo ">>> building rvd rsd ric raptorctl rhd rcd rmd"
+    (cd "$R" && ./build.sh fh8856v200 "$OUT" rvd rsd ric raptorctl rhd rcd rmd > /tmp/mkpb4-build.log 2>&1) ||
         { echo "build failed -- see /tmp/mkpb4-build.log"; tail -20 /tmp/mkpb4-build.log; exit 1; }
 
     echo ">>> assembling $OVL"
     rm -rf "$OVL"
     mkdir -p "$OVL/usr/bin" "$OVL/usr/lib" "$OVL/etc/init.d" "$OVL/usr/share/raptor"
     cp "$R/rvd/rvd" "$R/rsd/rsd" "$R/ric/ric" "$R/raptorctl/raptorctl" \
-       "$R/rhd/rhd" "$R/rcd/rcd" "$OVL/usr/bin/"
+       "$R/rhd/rhd" "$R/rcd/rcd" "$R/rmd/rmd" "$OVL/usr/bin/"
     # Web console: rhd serves exactly one page, /usr/share/raptor/index.html,
     # at "/" (plus the portal page). The console is that page; rhd's own
     # index.html is only a snapshot/MJPEG stub. rcd answers the console's
@@ -44,7 +44,7 @@ overlay() {
     # ydiff compares frames, lamp drives the white LEDs.
     $B-gcc -O2 -Wall -o "$OVL/usr/bin/ydiff" "$PKG/src/ydiff.c"
     $B-strip "$OVL"/usr/bin/rvd "$OVL"/usr/bin/rsd "$OVL"/usr/bin/ric "$OVL"/usr/bin/raptorctl \
-        "$OVL"/usr/bin/rhd "$OVL"/usr/bin/rcd "$OVL"/usr/bin/ydiff "$OVL"/usr/lib/*
+        "$OVL"/usr/bin/rhd "$OVL"/usr/bin/rcd "$OVL"/usr/bin/rmd "$OVL"/usr/bin/ydiff "$OVL"/usr/lib/*
     chmod 644 "$OVL"/usr/share/raptor/*
 
     cp "$PKG/overlay/usr/bin/lamp" "$PKG/overlay/usr/bin/wlight" "$OVL/usr/bin/"
@@ -123,6 +123,25 @@ image() {
     make -C "$OUT" onvif-simple-server > /tmp/mkpb4-onvif.log 2>&1 ||
         { echo "onvif-simple-server failed -- see /tmp/mkpb4-onvif.log"; tail -20 /tmp/mkpb4-onvif.log; exit 1; }
 
+    # Motion events: the package builds onvif_notify_server and the events
+    # templates but installs neither. They go into the overlay: the
+    # server, the events service's templates and the notification
+    # template, with the event's data item named IsMotion (what the stock
+    # PB4 sends under RuleEngine/CellMotionDetector/Motion), not State.
+    OSS=$(ls -d "$OUT"/build/onvif-simple-server-*/ 2>/dev/null | head -1)
+    [ -x "$OSS/onvif_notify_server" ] || { echo "  no onvif_notify_server in '$OSS'"; exit 1; }
+    mkdir -p "$OVL/usr/sbin" "$OVL/var/www/onvif/events_service_files" "$OVL/etc/onvif_notify_server"
+    cp "$OSS/onvif_notify_server" "$OVL/usr/sbin/"
+    $B-strip "$OVL/usr/sbin/onvif_notify_server"
+    for f in "$OSS"/events_service_files/*; do
+        sed 's/Name="State"/Name="IsMotion"/' "$f" > "$OVL/var/www/onvif/events_service_files/${f##*/}"
+    done
+    sed 's/Name="State"/Name="IsMotion"/' "$OSS/notify_files/Notify.xml" > "$OVL/etc/onvif_notify_server/Notify.xml"
+    grep -q 'Name="IsMotion"' "$OVL/var/www/onvif/events_service_files/PullMessages_2.xml" ||
+        { echo "  events templates: no State item to rename"; exit 1; }
+    chmod 644 "$OVL"/var/www/onvif/events_service_files/* "$OVL/etc/onvif_notify_server/Notify.xml"
+    echo "  motion events: onvif_notify_server and its templates in the overlay"
+
     echo ">>> installing into $T"
     cp -a "$OVL"/. "$T"/
 
@@ -148,8 +167,9 @@ image() {
 
     echo ">>> checking the target (ONVIF, VMM pool)"
     bad=0
-    for f in usr/sbin/onvif_simple_server usr/sbin/wsd_simple_server \
-             var/www/onvif/device_service_files/GetDeviceInformation.xml; do
+    for f in usr/sbin/onvif_simple_server usr/sbin/wsd_simple_server usr/sbin/onvif_notify_server \
+             usr/bin/rmd var/www/onvif/device_service_files/GetDeviceInformation.xml \
+             var/www/onvif/events_service_files/PullMessages_2.xml etc/onvif_notify_server/Notify.xml; do
         [ -e "$T/$f" ] || { echo "  FAIL: /$f missing"; bad=1; }
     done
     for s in device media events ptz; do

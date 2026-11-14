@@ -13,6 +13,8 @@ RC=/etc/raptor.conf
 WWW=/usr/share/onvif-www
 HTTPD_CONF=/etc/httpd_onvif.conf
 WSD_PID=/var/run/wsd_simple_server.pid
+NOTIFY_PID=/var/run/onvif_notify_server.pid
+NOTIFY_DIR=/tmp/onvif_notify_server
 
 cfg() {
 	awk -v s="[$1]" -v k="$2" '
@@ -58,6 +60,16 @@ start() {
 		wsd_simple_server -i "$ifs" -x "$x" -p "$WSD_PID" \
 			-m "${model:-PB4-Raptor}" -n "${maker:-Vatilon}" || { echo "wsd FAIL"; return 1; }
 	fi
+	# motion events: onvif-conf writes an events block only when [motion]
+	# is on with its event_file in $NOTIFY_DIR; rmd creates and removes
+	# that file, onvif_notify_server turns it into ONVIF events
+	if grep -q '^events=' /tmp/onvif.conf 2>/dev/null; then
+		mkdir -p "$NOTIFY_DIR"
+		if [ ! -e "$NOTIFY_PID" ] || ! kill -0 "$(cat "$NOTIFY_PID")" 2>/dev/null; then
+			onvif_notify_server -c /tmp/onvif.conf -p "$NOTIFY_PID" || { echo "notify FAIL"; return 1; }
+		fi
+		echo -n "motion events, "
+	fi
 	echo "OK"
 }
 
@@ -66,6 +78,8 @@ stop() {
 	p=$(httpd_pid) && kill "$p" 2>/dev/null
 	[ -e "$WSD_PID" ] && kill "$(cat "$WSD_PID")" 2>/dev/null
 	rm -f "$WSD_PID"
+	[ -e "$NOTIFY_PID" ] && kill "$(cat "$NOTIFY_PID")" 2>/dev/null
+	rm -f "$NOTIFY_PID"
 	echo "OK"
 }
 

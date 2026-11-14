@@ -9,6 +9,10 @@
 #   it hands out carry no credentials; the NVR uses its own.
 # - Identity: [onvif] manufacturer/model, the firmware version, the SoC,
 #   and the MAC as serial number.
+# - Motion events: with [motion] enabled and its event_file in
+#   /tmp/onvif_notify_server/, one event -- RuleEngine/CellMotionDetector/
+#   Motion with IsMotion, as the stock PB4 sends -- that
+#   onvif_notify_server raises while rmd keeps that file.
 
 RC=/etc/raptor.conf
 OUT=/tmp/onvif.conf
@@ -76,4 +80,14 @@ umask 077
 	fi
 	echo
 	echo "ptz=0"
+	ev=$(cfg motion event_file "")
+	if [ "$(cfg motion enabled false)" = true ] && [ "${ev%/*}" = /tmp/onvif_notify_server ]; then
+		echo
+		echo "events=3"
+		echo "topic=tns1:RuleEngine/CellMotionDetector/Motion"
+		echo "source_name=VideoSourceConfigurationToken"
+		echo "source_type=tt:ReferenceToken"
+		echo "source_value=VideoSourceConfigToken"
+		echo "input_file=$ev"
+	fi
 } > "$OUT.new" && mv "$OUT.new" "$OUT"
