@@ -9,6 +9,7 @@
 #
 # Daemons: rvd rsd ric (video, RTSP, day/night), rhd + rcd (web console on
 # :8080 with config editing), raptorctl (CLI, also used by the init script).
+# ONVIF on port 80 (onvif-simple-server), off until [onvif] enabled = true.
 #
 # Paths below match the PB4 working tree; change them here if yours differ.
 
@@ -55,10 +56,19 @@ overlay() {
     # PB4 pin setup. rvd first, then rsd and ric; daemons not installed
     # (rhd, rod, ...) are skipped by the script itself.
     cp "$R/config/S31raptor" "$OVL/etc/init.d/S96raptor"
-    chmod +x "$OVL"/etc/init.d/* "$OVL"/usr/bin/*
+
+    # ONVIF (off until [onvif] enabled = true): the init script replacing
+    # the onvif-simple-server package's, onvif-conf/onvif-cgi (the conf
+    # from raptor.conf), the CGI links, and httpd's docroot.
+    mkdir -p "$OVL/usr/sbin" "$OVL/usr/share/onvif-www" "$OVL/var/www/onvif"
+    cp "$PKG/overlay/etc/init.d/S96onvifserver" "$OVL/etc/init.d/"
+    cp "$PKG/overlay/usr/sbin/onvif-conf" "$PKG/overlay/usr/sbin/onvif-cgi" "$OVL/usr/sbin/"
+    cp -P "$PKG/overlay/usr/share/onvif-www/onvif" "$OVL/usr/share/onvif-www/"
+    cp -P "$PKG"/overlay/var/www/onvif/*_service "$OVL/var/www/onvif/"
+    chmod +x "$OVL"/etc/init.d/* "$OVL"/usr/bin/* "$OVL"/usr/sbin/*
 
     echo ">>> overlay contents"
-    (cd "$OVL" && find . -type f | sort | xargs ls -l | awk '{printf "  %8s  %s\n", $5, $9}')
+    (cd "$OVL" && find . \( -type f -o -type l \) | sort | xargs ls -ld | awk '{printf "  %8s  %s %s %s\n", $5, $9, $10, $11}')
     du -sk "$OVL" | awk '{print "  total " $1 " KiB"}'
 }
 
@@ -86,6 +96,21 @@ image() {
     echo "  init scripts now in the image:"
     ls "$T/etc/init.d" | tr '\n' ' ' | sed 's/^/    /'; echo
 
+    # ONVIF: OpenIPC's onvif-simple-server package (server, WS-Discovery,
+    # XML templates), built and installed before the overlay goes in, so
+    # the overlay's init script and CGI links replace the package's and
+    # the final make does not reinstall them.
+    echo ">>> onvif-simple-server: selected and built"
+    for sym in BR2_PACKAGE_MBEDTLS BR2_PACKAGE_ONVIF_SIMPLE_SERVER; do
+        sed -i "/^# $sym is not set/d; /^$sym=/d" "$OUT/.config"
+        echo "$sym=y" >> "$OUT/.config"
+    done
+    make -C "$OUT" olddefconfig > /dev/null
+    grep -q '^BR2_PACKAGE_ONVIF_SIMPLE_SERVER=y' "$OUT/.config" ||
+        { echo "  could not select BR2_PACKAGE_ONVIF_SIMPLE_SERVER"; exit 1; }
+    make -C "$OUT" onvif-simple-server > /tmp/mkpb4-onvif.log 2>&1 ||
+        { echo "onvif-simple-server failed -- see /tmp/mkpb4-onvif.log"; tail -20 /tmp/mkpb4-onvif.log; exit 1; }
+
     echo ">>> installing into $T"
     cp -a "$OVL"/. "$T"/
 
@@ -102,6 +127,29 @@ image() {
     make -C "$OUT" > /tmp/mkpb4-image.log 2>&1 ||
         { echo "image build failed -- see /tmp/mkpb4-image.log"; tail -20 /tmp/mkpb4-image.log; exit 1; }
     ls -l "$OUT/images/"
+
+    echo ">>> checking ONVIF in the target"
+    bad=0
+    for f in usr/sbin/onvif_simple_server usr/sbin/wsd_simple_server \
+             var/www/onvif/device_service_files/GetDeviceInformation.xml; do
+        [ -e "$T/$f" ] || { echo "  FAIL: /$f missing"; bad=1; }
+    done
+    for s in device media events ptz; do
+        [ "$(readlink "$T/var/www/onvif/${s}_service")" = /usr/sbin/onvif-cgi ] ||
+            { echo "  FAIL: /var/www/onvif/${s}_service -> $(readlink "$T/var/www/onvif/${s}_service")"; bad=1; }
+    done
+    # newer OpenIPC trees strip shell comments in post-build: compare
+    # through the same awk when the tree has it
+    STRIPPER=$OUT/../general/scripts/strip-shell-comments.awk
+    if [ -f "$STRIPPER" ]; then
+        awk -f "$STRIPPER" "$OVL/etc/init.d/S96onvifserver" | cmp -s - "$T/etc/init.d/S96onvifserver"
+    else
+        cmp -s "$OVL/etc/init.d/S96onvifserver" "$T/etc/init.d/S96onvifserver"
+    fi || { echo "  FAIL: S96onvifserver is the package's, not ours"; bad=1; }
+    # busybox httpd runs CGI under /onvif/ only with OpenIPC's patch
+    grep -q 'onvif/' "$T/bin/busybox" || { echo "  FAIL: busybox httpd has no /onvif/ CGI support"; bad=1; }
+    [ $bad = 0 ] && echo "  ok"
+    [ $bad = 0 ]
 }
 
 case "$1" in

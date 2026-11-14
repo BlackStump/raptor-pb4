@@ -1,0 +1,9 @@
+#!/bin/sh
+# onvif-cgi -- what busybox httpd runs for /onvif/<service>. The conf is
+# rewritten whenever raptor.conf is newer, so credentials or stream sizes
+# changed in the web console reach ONVIF on the next request.
+C=/tmp/onvif.conf
+if [ ! -s "$C" ] || [ /etc/raptor.conf -nt "$C" ]; then
+	/usr/sbin/onvif-conf
+fi
+exec /usr/sbin/onvif_simple_server -c "$C" "${0##*/}"

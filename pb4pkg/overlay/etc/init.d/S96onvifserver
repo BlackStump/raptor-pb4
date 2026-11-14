@@ -1,0 +1,76 @@
+#!/bin/sh
+# S96onvifserver -- ONVIF for Raptor: onvif_simple_server as CGI under a
+# busybox httpd of its own, plus wsd_simple_server for WS-Discovery (NVR
+# "auto search"). Off unless [onvif] enabled = true in /etc/raptor.conf.
+#
+# This replaces the onvif-simple-server package's own script, which
+# starts httpd only (no discovery) and reads a static /etc/onvif.conf.
+#
+# httpd serves /usr/share/onvif-www, holding nothing but the onvif
+# directory, so port 80 exposes ONVIF and not the rest of /var/www.
+
+RC=/etc/raptor.conf
+WWW=/usr/share/onvif-www
+HTTPD_CONF=/etc/httpd_onvif.conf
+WSD_PID=/var/run/wsd_simple_server.pid
+
+cfg() {
+	awk -v s="[$1]" -v k="$2" '
+		/^[ \t]*\[/ { gsub(/[ \t]/, ""); in_s = ($0 == s); next }
+		in_s {
+			line = $0; sub(/[ \t]*#.*/, "", line)
+			n = index(line, "=")
+			if (n == 0) next
+			key = substr(line, 1, n - 1); gsub(/[ \t]/, "", key)
+			if (key != k) next
+			val = substr(line, n + 1); gsub(/^[ \t]+|[ \t]+$/, "", val)
+			print val; exit
+		}' "$RC" 2>/dev/null
+}
+
+# our httpd is the one whose command line names $HTTPD_CONF
+httpd_pid() {
+	for p in $(pidof httpd 2>/dev/null); do
+		tr '\0' '\n' < "/proc/$p/cmdline" 2>/dev/null | grep -qxF "$HTTPD_CONF" && { echo "$p"; return 0; }
+	done
+	return 1
+}
+
+start() {
+	en=$(cfg onvif enabled)
+	if [ "$en" != true ]; then
+		echo "ONVIF: off ([onvif] enabled = true in $RC to turn it on)"
+		return 0
+	fi
+	port=$(cfg onvif port); port=${port:-80}
+	ifs=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}'); ifs=${ifs:-eth0}
+
+	model=$(cfg onvif model); maker=$(cfg onvif manufacturer)
+	/usr/sbin/onvif-conf
+	echo "A:*" > "$HTTPD_CONF"
+
+	echo -n "Starting ONVIF on port $port: "
+	if ! httpd_pid > /dev/null; then
+		httpd -p "$port" -h "$WWW" -c "$HTTPD_CONF" || { echo "httpd FAIL"; return 1; }
+	fi
+	if [ ! -e "$WSD_PID" ] || ! kill -0 "$(cat "$WSD_PID")" 2>/dev/null; then
+		if [ "$port" = 80 ]; then x="http://%s/onvif/device_service"; else x="http://%s:$port/onvif/device_service"; fi
+		wsd_simple_server -i "$ifs" -x "$x" -p "$WSD_PID" \
+			-m "${model:-PB4}" -n "${maker:-Vatilon}" || { echo "wsd FAIL"; return 1; }
+	fi
+	echo "OK"
+}
+
+stop() {
+	echo -n "Stopping ONVIF: "
+	p=$(httpd_pid) && kill "$p" 2>/dev/null
+	[ -e "$WSD_PID" ] && kill "$(cat "$WSD_PID")" 2>/dev/null
+	rm -f "$WSD_PID"
+	echo "OK"
+}
+
+case "$1" in
+start|stop) $1 ;;
+restart) stop; sleep 1; start ;;
+*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

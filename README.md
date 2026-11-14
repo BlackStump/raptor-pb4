@@ -128,6 +128,20 @@ To return to the image's `/etc/raptor.conf` after editing it on the camera,
 delete the overlay copy (`rm /overlay/root/etc/raptor.conf`), not
 `/etc/raptor.conf` itself, which would hide the image's copy too.
 
+## ONVIF
+
+Off by default. `[onvif] enabled = true` in `/etc/raptor.conf`, then
+`/etc/init.d/S96onvifserver restart` (or reboot), and NVRs find the camera
+with auto search (WS-Discovery) or add it by IP on port 80, as Vatilon PB4.
+
+It is OpenIPC's `onvif-simple-server` package: `onvif_simple_server` as CGI
+under a busybox httpd of its own, serving only `/onvif/`, and
+`wsd_simple_server` for discovery. `onvif-conf` writes its config from
+`raptor.conf` on every change: the two streams (`rtsp://<ip>/stream0`,
+`/stream1`), snapshots from rhd (`:8080/snap.jpg`), and the stream account
+from `[rtsp]` as the ONVIF login (open while that is unset). The same
+files as raptor-xm550's, with PB4 defaults.
+
 ## Files
 
 - `pb4pkg/overlay/etc/raptor.conf` - PB4 config: streams, IR-cut, IR PWM,

@@ -1,0 +1,79 @@
+#!/bin/sh
+# onvif-conf -- write /tmp/onvif.conf for onvif_simple_server from
+# /etc/raptor.conf, so ONVIF always describes what Raptor is serving.
+#
+# - Streams: [stream0]/[stream1] sizes, rsd's /stream0 and /stream1 on the
+#   [rtsp] port, snapshots from rhd's /snap.jpg on the [http] port.
+# - Credentials: the stream account ([rtsp] username/password), never the
+#   root login. Unset, ONVIF is open, like the streams. The stream URIs
+#   it hands out carry no credentials; the NVR uses its own.
+# - Identity: [onvif] manufacturer/model, the firmware version, the SoC,
+#   and the MAC as serial number.
+
+RC=/etc/raptor.conf
+OUT=/tmp/onvif.conf
+
+# cfg SECTION KEY DEFAULT: one value from raptor.conf, comments stripped
+cfg() {
+	v=$(awk -v s="[$1]" -v k="$2" '
+		/^[ \t]*\[/ { gsub(/[ \t]/, ""); in_s = ($0 == s); next }
+		in_s {
+			line = $0; sub(/[ \t]*#.*/, "", line)
+			n = index(line, "=")
+			if (n == 0) next
+			key = substr(line, 1, n - 1); gsub(/[ \t]/, "", key)
+			if (key != k) next
+			val = substr(line, n + 1); gsub(/^[ \t]+|[ \t]+$/, "", val)
+			print val; exit
+		}' "$RC" 2>/dev/null)
+	echo "${v:-$3}"
+}
+
+ifs=$(ip route 2>/dev/null | awk '/default/ {print $5; exit}')
+[ -n "$ifs" ] || ifs=eth0
+mac=$(sed 's/://g' "/sys/class/net/$ifs/address" 2>/dev/null)
+fw=$(sed -n 's/^OPENIPC_VERSION="\{0,1\}\([^"]*\)"\{0,1\}/\1/p' /etc/os-release 2>/dev/null)
+soc=$(ipcinfo --chip-name 2>/dev/null)
+
+user=$(cfg rtsp username "")
+pass=$(cfg rtsp password "")
+rtsp_port=$(cfg rtsp port 554)
+http_port=$(cfg http port 8080)
+
+umask 077
+{
+	echo "model=$(cfg onvif model PB4)"
+	echo "manufacturer=$(cfg onvif manufacturer Vatilon)"
+	echo "firmware_ver=Raptor OpenIPC ${fw:-unknown}"
+	echo "hardware_id=${soc:-fh8856v200}"
+	echo "serial_num=${mac:-0}"
+	echo "ifs=$ifs"
+	echo "port=$(cfg onvif port 80)"
+	echo "scope=onvif://www.onvif.org/Profile/Streaming"
+	if [ -n "$user" ] && [ -n "$pass" ]; then
+		echo "user=$user"
+		echo "password=$pass"
+	fi
+	echo "adv_enable_media2=0"
+	echo "adv_fault_if_unknown=0"
+	echo "adv_fault_if_set=0"
+	echo "adv_synology_nvr=0"
+	echo
+	echo "name=Profile_0"
+	echo "width=$(cfg stream0 width 2560)"
+	echo "height=$(cfg stream0 height 1440)"
+	echo "url=rtsp://%s:$rtsp_port/stream0"
+	echo "snapurl=http://%s:$http_port/snap.jpg"
+	echo "type=$(cfg stream0 codec h264 | tr a-z A-Z)"
+	if [ "$(cfg stream1 enabled true)" = true ]; then
+		echo
+		echo "name=Profile_1"
+		echo "width=$(cfg stream1 width 640)"
+		echo "height=$(cfg stream1 height 360)"
+		echo "url=rtsp://%s:$rtsp_port/stream1"
+		echo "snapurl=http://%s:$http_port/snap.jpg"
+		echo "type=$(cfg stream1 codec h264 | tr a-z A-Z)"
+	fi
+	echo
+	echo "ptz=0"
+} > "$OUT.new" && mv "$OUT.new" "$OUT"
