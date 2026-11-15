@@ -7,7 +7,9 @@
 # night (IR, monochrome, ric auto) after HOLD seconds without motion.
 #
 # Safeguards against the "light never goes off" loop:
-#   - a frame change across most of the picture is treated as a lighting change, not motion
+#   - a frame change across most of the picture is treated as a lighting change, not motion,
+#     and motion is ignored for SETTLE_OFF seconds after it while exposure settles: another
+#     camera's lamps, the garage light or a day/night switch must not look like motion
 #   - motion is ignored for SETTLE seconds after the light goes on (SETTLE_OFF after it goes off)
 #   - switching on needs motion in TRIGGER frames in a row
 #   - day/night switching is frozen while the light is on, and night is judged before it
@@ -104,9 +106,16 @@ while :; do
 	if [ "$now" -ge "$settle_until" ] && [ "$changed" -ge "$MINCELLS" ]; then
 		if [ "$changed" -le "$MAXCELLS" ]; then
 			motion=1
-		else
-			[ "$VERBOSE" = 1 ] && log "lighting change ignored ($changed cells)"
 		fi
+	fi
+	# A lighting change (most of the picture at once): never motion, and the
+	# exposure settling after it changes a few hundred cells for some seconds,
+	# which would pass as motion -- with several cameras in one room, each
+	# one's lamps would set off the others. Rest instead.
+	if [ "$changed" -gt "$MAXCELLS" ]; then
+		[ "$state" = idle ] && streak=0
+		settle_until=$((now + SETTLE_OFF))
+		[ "$VERBOSE" = 1 ] && log "lighting change ignored ($changed cells), resting ${SETTLE_OFF}s"
 	fi
 
 	case "$state" in
