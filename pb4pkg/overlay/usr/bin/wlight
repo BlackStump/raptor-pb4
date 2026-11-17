@@ -10,7 +10,7 @@
 #          changes across the picture before comparing, so another camera's lamps or
 #          the AE settling do not read as motion; the same detection gives the ONVIF
 #          motion events. No frame copies here.
-#   ydiff  grab the 640x360 sub-stream (raptorctl rvd save raw) and compare raw
+#   ydiff  grab the sub-stream (raptorctl rvd save raw) and compare raw
 #          brightness of successive frames with ydiff (the original way).
 #   auto   rvd when its detection is running, otherwise ydiff (the default).
 #
@@ -37,7 +37,7 @@ MINCELLS=15     # grid cells (of 576) that must change to count as motion
 MAXCELLS=430    # more than this many changed cells = lighting change, ignored
 THRESH=10       # brightness change (0-255) for a grid cell to count as changed
 POLL=1          # seconds between frames
-CHN=1           # rvd channel to sample (1 = 640x360 sub-stream)
+CHN=1           # rvd channel to sample (1 = the sub-stream)
 RVD_LOG=warn    # rvd logs every frame grab at info; keep it at this level ("" leaves it alone)
 IR_VIA_RIC=0    # 1 = ric owns the IR LEDs (PB4: pwm_irled), switch them off while white is on
 SOURCE=auto     # rvd, ydiff or auto (see above)
@@ -125,14 +125,18 @@ while :; do
 		[ "$VERBOSE" = 1 ] && { [ "$state" != idle ] || [ "$motion" = 1 ]; } &&
 			echo "$(date +%T)   [$state] motion=$motion"
 	else
-		raptorctl rvd save raw "$CUR" "$CHN" >/dev/null 2>&1 || continue
+		r=$(raptorctl rvd save raw "$CUR" "$CHN" 2>/dev/null) || continue
+		# the frame's size, from rvd's answer (640x360 on the PB4, 640x480 on
+		# the XM550)
+		fw=$(echo "$r" | sed -n 's/.*"width":\([0-9]*\).*/\1/p')
+		fh=$(echo "$r" | sed -n 's/.*"height":\([0-9]*\).*/\1/p')
 		# rvd forgets the level when it restarts (config apply), so say it again now and then
 		if [ $((now - last_quiet)) -ge 300 ]; then quiet_rvd; last_quiet=$now; fi
 		if [ ! -f "$PREV" ]; then
 			mv "$CUR" "$PREV"
 			continue
 		fi
-		set -- $(ydiff "$PREV" "$CUR" 640 360 20 "$THRESH" 2>/dev/null | tr '=' ' ')
+		set -- $(ydiff "$PREV" "$CUR" "${fw:-640}" "${fh:-360}" 20 "$THRESH" 2>/dev/null | tr '=' ' ')
 		mv "$CUR" "$PREV"
 		changed=${2:-0}; dmean=${6:-0}
 		[ "$VERBOSE" = 1 ] && { [ "$state" != idle ] || [ "$changed" -gt 0 ]; } && echo "$(date +%T)   [$state] changed=$changed dmean=$dmean"
