@@ -39,6 +39,14 @@ mac=$(sed 's/://g' "/sys/class/net/$ifs/address" 2>/dev/null)
 fw=$(sed -n 's/^OPENIPC_VERSION="\{0,1\}\([^"]*\)"\{0,1\}/\1/p' /etc/os-release 2>/dev/null)
 soc=$(ipcinfo --chip-name 2>/dev/null)
 
+# Audio on the streams: rad with G.711 is what an NVR can play. rad's own
+# default codec is l16, which ONVIF has no name for: NONE then.
+case "$(cfg audio enabled true):$(cfg audio codec l16)" in
+true:pcmu | true:pcma) aenc=G711 ;;
+true:aac) aenc=AAC ;;
+*) aenc=NONE ;;
+esac
+
 user=$(cfg rtsp username "")
 pass=$(cfg rtsp password "")
 rtsp_port=$(cfg rtsp port 554)
@@ -69,6 +77,8 @@ umask 077
 	echo "url=rtsp://%s:$rtsp_port/stream0"
 	echo "snapurl=http://%s:$http_port/snap.jpg"
 	echo "type=$(cfg stream0 codec h264 | tr a-z A-Z)"
+	echo "audio_encoder=$aenc"
+	echo "audio_decoder=NONE"
 	if [ "$(cfg stream1 enabled true)" = true ]; then
 		echo
 		echo "name=Profile_1"
@@ -77,6 +87,8 @@ umask 077
 		echo "url=rtsp://%s:$rtsp_port/stream1"
 		echo "snapurl=http://%s:$http_port/snap.jpg"
 		echo "type=$(cfg stream1 codec h264 | tr a-z A-Z)"
+		echo "audio_encoder=$aenc"
+		echo "audio_decoder=NONE"
 	fi
 	echo
 	echo "ptz=0"

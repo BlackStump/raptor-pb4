@@ -8,7 +8,8 @@
 #                          (load_fullhan stays the package's: 90M pool
 #                          above mem=36M)
 #
-# Daemons: rvd rsd ric (video, RTSP, day/night), rhd + rcd (web console on
+# Daemons: rvd rsd ric (video, RTSP, day/night), rad (the mic, on the RTSP
+# streams; [audio] enabled), rhd + rcd (web console on
 # :8080 with config editing), raptorctl (CLI, also used by the init script).
 # ONVIF on port 80 (onvif-simple-server), off until [onvif] enabled = true.
 #
@@ -23,15 +24,15 @@ OVL=$PB4/pb4-overlay
 B=$OUT/host/bin/arm-openipc-linux-musleabi
 
 overlay() {
-    echo ">>> building rvd rsd ric raptorctl rhd rcd rmd"
-    (cd "$R" && ./build.sh fh8856v200 "$OUT" rvd rsd ric raptorctl rhd rcd rmd > /tmp/mkpb4-build.log 2>&1) ||
+    echo ">>> building rvd rsd rad ric raptorctl rhd rcd rmd"
+    (cd "$R" && ./build.sh fh8856v200 "$OUT" rvd rsd rad ric raptorctl rhd rcd rmd > /tmp/mkpb4-build.log 2>&1) ||
         { echo "build failed -- see /tmp/mkpb4-build.log"; tail -20 /tmp/mkpb4-build.log; exit 1; }
 
     echo ">>> assembling $OVL"
     rm -rf "$OVL"
     mkdir -p "$OVL/usr/bin" "$OVL/usr/lib" "$OVL/etc/init.d" "$OVL/usr/share/raptor"
     cp "$R/rvd/rvd" "$R/rsd/rsd" "$R/ric/ric" "$R/raptorctl/raptorctl" \
-       "$R/rhd/rhd" "$R/rcd/rcd" "$R/rmd/rmd" "$OVL/usr/bin/"
+       "$R/rhd/rhd" "$R/rcd/rcd" "$R/rmd/rmd" "$R/rad/rad" "$OVL/usr/bin/"
     # Web console: rhd serves exactly one page, /usr/share/raptor/index.html,
     # at "/" (plus the portal page). The console is that page; rhd's own
     # index.html is only a snapshot/MJPEG stub. rcd answers the console's
@@ -44,7 +45,7 @@ overlay() {
     # ydiff compares frames, lamp drives the white LEDs.
     $B-gcc -O2 -Wall -o "$OVL/usr/bin/ydiff" "$PKG/src/ydiff.c"
     $B-strip "$OVL"/usr/bin/rvd "$OVL"/usr/bin/rsd "$OVL"/usr/bin/ric "$OVL"/usr/bin/raptorctl \
-        "$OVL"/usr/bin/rhd "$OVL"/usr/bin/rcd "$OVL"/usr/bin/rmd "$OVL"/usr/bin/ydiff "$OVL"/usr/lib/*
+        "$OVL"/usr/bin/rhd "$OVL"/usr/bin/rcd "$OVL"/usr/bin/rmd "$OVL"/usr/bin/rad "$OVL"/usr/bin/ydiff "$OVL"/usr/lib/*
     chmod 644 "$OVL"/usr/share/raptor/*
 
     cp "$PKG/overlay/usr/bin/lamp" "$PKG/overlay/usr/bin/wlight" "$OVL/usr/bin/"
@@ -172,7 +173,7 @@ image() {
     echo ">>> checking the target (ONVIF, VMM pool)"
     bad=0
     for f in usr/sbin/onvif_simple_server usr/sbin/wsd_simple_server usr/sbin/onvif_notify_server \
-             usr/bin/rmd var/www/onvif/device_service_files/GetDeviceInformation.xml \
+             usr/bin/rmd usr/bin/rad var/www/onvif/device_service_files/GetDeviceInformation.xml \
              var/www/onvif/events_service_files/PullMessages_2.xml etc/onvif_notify_server/Notify.xml; do
         [ -e "$T/$f" ] || { echo "  FAIL: /$f missing"; bad=1; }
     done

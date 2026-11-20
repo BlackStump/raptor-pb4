@@ -151,6 +151,22 @@ the stock PB4 sends them (`RuleEngine/CellMotionDetector/Motion`,
 `IsMotion`). To turn it off, `[motion] enabled = false`, then restart
 `S96raptor` and `S96onvifserver`. `wlight` keeps its own detection for the white LEDs.
 
+## Audio
+
+The mic is on both RTSP streams as G.711 (PCMU, 8 kHz), on by default;
+`[audio] enabled = false`, or Audio -> Audio capture in the web console,
+turns it off. ONVIF advertises it to the NVR.
+
+The FH885xV200's codec runs on the ARC core beside the media pipeline;
+`libacw_mpi.so` reaches it through `/dev/rtxbus`, with no driver of its
+own. Like the other Fullhan blobs it is a uClibc build and needs the HAL's
+mmap bridge (`acw: mmap fail!` without it). raptor-hal's `fh_audio.c`
+brings it up for rad.
+
+The PB4's mic picks up mains hum (50 Hz and 150 Hz): 2380 RMS on a quiet
+bench recording. The HAL runs a fourth-order 250 Hz high-pass on every
+frame, which brings that to about 100 RMS and leaves speech untouched.
+
 ## Files
 
 - `pb4pkg/overlay/etc/raptor.conf` - PB4 config: streams, IR-cut, IR PWM,
