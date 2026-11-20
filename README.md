@@ -31,8 +31,11 @@ boots straight into it.
 - **Audio**: the mic on both streams, G.711 (see below).
 - **Boots unattended** from the image: modules, pin setup, then Raptor.
 
-Not yet: OSD, anti-flicker, black-and-white at night (night stays in colour,
-IR gives it a purple cast).
+- **OSD**: time (top left) and uptime (top right) on the main stream, drawn
+  by rod into the one overlay plane the PB4 has (raptor-hal `fh_osd.c`, the
+  way Divinus draws it). The sub-stream carries none.
+
+Not yet: anti-flicker.
 
 ## Hardware notes (PB4)
 
@@ -214,5 +217,9 @@ frame, which brings that to about 100 RMS and leaves speech untouched.
 - **FH8852V201 reverse engineering:**
   [pavliha/fh8852v201-dump](https://github.com/pavliha/fh8852v201-dump),
   which pointed the way to the rate-control layout.
+- **libschrift** (rod's font renderer): [tomolt/libschrift](https://github.com/tomolt/libschrift),
+  ISC; copy in `pb4pkg/src/libschrift`.
+- **DejaVu fonts:** [dejavu-fonts](https://dejavu-fonts.github.io/); licence
+  in `pb4pkg/src/fonts/DejaVu-LICENSE`.
 - **Bench work, testing and the PB4:** BlackStump.
 - Developed with Claude (Anthropic).
