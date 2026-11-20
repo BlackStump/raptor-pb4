@@ -25,10 +25,14 @@ boots straight into it.
   LEDs (driven by ric over PWM), and the vendor day/night ISP tunings with
   auto-exposure kept running under both.
 - **Web console** on port 8080 (rhd + rcd).
+- **Motion white light** (wlight): white LEDs at night while there is
+  motion, from rvd's detection. Settings in `raptor.conf` `[wlight]`,
+  edited in the web console under Recording -> White light.
+- **Audio**: the mic on both streams, G.711 (see below).
 - **Boots unattended** from the image: modules, pin setup, then Raptor.
 
 Not yet: OSD, anti-flicker, black-and-white at night (night stays in colour,
-IR gives it a purple cast), motion-triggered white light.
+IR gives it a purple cast).
 
 ## Hardware notes (PB4)
 
@@ -162,6 +166,9 @@ One image serves both housings; the camera is told which it is in:
                       no white light
     housing           show the current setting
 
+The white light alone can also be switched in the web console
+(Recording -> White light), which is the same `[wlight] enabled`.
+
 The image starts as `pb4`. A full-flash image can carry the housing in
 the U-Boot env (`mkpb4full.sh NAME MAC ceiling`), applied by S95pb4 on
 first boot.
@@ -193,6 +200,8 @@ frame, which brings that to about 100 RMS and leaves speech untouched.
   gain thresholds.
 - `pb4pkg/overlay/etc/init.d/S95pb4` - pin mux, IR-cut rail, lamps off.
 - `pb4pkg/mkpb4.sh` - build and package.
+- `pb4pkg/overlay/usr/bin/wlight`, `lamp`, `housing` - motion white light,
+  the lamps by hand, which housing the camera is in.
 - `tools/dntest.sh` - guided day/night test on the camera.
 - `tools/codectest.sh` - rate-control check per codec and mode.
 

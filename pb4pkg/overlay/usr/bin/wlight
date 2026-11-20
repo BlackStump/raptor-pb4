@@ -24,7 +24,14 @@
 #   - the light goes off after MAXON seconds regardless; it re-arms only after a quiet period
 #
 # usage: wlight [-v]        (-v also prints every decision to the terminal)
-# Settings below can be overridden in /etc/wlight.conf (same NAME=value lines).
+#
+# Settings: raptor.conf's [wlight] (enabled, level, hold, maxon, trigger,
+# thresh), which the web console edits (Recording -> White light); wlight
+# re-reads it every RELOAD seconds, so a save there applies by itself and
+# enabled = false switches the light off and idles. The rest below can be
+# set in /etc/wlight.conf (NAME=value lines). With no [wlight] section (a
+# camera upgraded with its old raptor.conf), /etc/wlight.conf alone decides,
+# and wlight is on while that file exists, as before.
 
 LEVEL=50        # white brightness, 0-100
 HOLD=40         # seconds the light stays on after the last motion
@@ -39,10 +46,39 @@ THRESH=10       # brightness change (0-255) for a grid cell to count as changed
 POLL=1          # seconds between frames
 CHN=1           # rvd channel to sample (1 = the sub-stream)
 RVD_LOG=warn    # rvd logs every frame grab at info; keep it at this level ("" leaves it alone)
-IR_VIA_RIC=0    # 1 = ric owns the IR LEDs (PB4: pwm_irled), switch them off while white is on
+IR_VIA_RIC=1    # 1 = ric owns the IR LEDs (pwm_irled/gpio_irled), switch them off while white is on
 SOURCE=auto     # rvd, ydiff or auto (see above)
+RELOAD=10       # seconds between re-reads of the settings
+ENABLED=true
 
 [ -f /etc/wlight.conf ] && . /etc/wlight.conf
+
+RC=/etc/raptor.conf
+# The [wlight] section as NAME=value lines, upper-cased names, comments
+# stripped; nothing when there is no section
+wlight_section() {
+	awk '
+		/^[ \t]*\[/ { s = $0; gsub(/[ \t]/, "", s); in_s = (s == "[wlight]"); next }
+		in_s {
+			line = $0; sub(/[ \t]*#.*/, "", line)
+			n = index(line, "="); if (n == 0) next
+			k = substr(line, 1, n - 1); gsub(/[ \t]/, "", k)
+			v = substr(line, n + 1); gsub(/^[ \t]+|[ \t]+$/, "", v)
+			if (k ~ /^(enabled|level|hold|maxon|trigger|thresh)$/ && v ~ /^[A-Za-z0-9]+$/)
+				print toupper(k) "=" v
+		}' "$RC" 2>/dev/null
+}
+load_settings() {
+	sec=$(wlight_section)
+	if [ -n "$sec" ]; then
+		eval "$sec"
+	elif [ -f /etc/wlight.conf ]; then
+		ENABLED=true
+	else
+		ENABLED=false
+	fi
+}
+load_settings
 
 VERBOSE=0
 [ "$1" = "-v" ] && VERBOSE=1
@@ -104,7 +140,15 @@ rvd | ydiff) ;;
 *) if rvd_active; then SOURCE=rvd; else SOURCE=ydiff; fi ;;
 esac
 
-if [ "$SOURCE" = rvd ]; then
+summary() {
+	if [ "$ENABLED" != true ]; then echo "off (raptor.conf [wlight] enabled = false)"
+	else echo "level $LEVEL%, hold ${HOLD}s, max ${MAXON}s, trigger $TRIGGER"; fi
+}
+last_load=$(date +%s); was="$(summary)"
+
+if [ "$ENABLED" != true ]; then
+	log "started, $was"
+elif [ "$SOURCE" = rvd ]; then
 	log "started (level $LEVEL%, hold ${HOLD}s, max ${MAXON}s, motion from rvd)"
 else
 	log "started (level $LEVEL%, hold ${HOLD}s, max ${MAXON}s, cells $MINCELLS..$MAXCELLS)"
@@ -113,6 +157,19 @@ while :; do
 	sleep "$POLL"
 	now=$(date +%s)
 	motion=0
+
+	if [ $((now - last_load)) -ge "$RELOAD" ]; then
+		load_settings; last_load=$now
+		[ "$(summary)" != "$was" ] && { was="$(summary)"; log "settings: $was"; }
+		if [ "$ENABLED" != true ] && [ "$state" = on ]; then
+			light_off "turned off in the settings"
+			settle_until=$((now + SETTLE_OFF))
+		fi
+	fi
+	if [ "$ENABLED" != true ]; then
+		state=idle; streak=0
+		continue
+	fi
 
 	if [ "$SOURCE" = rvd ]; then
 		# rvd rests by itself after a whole-scene change (its own lamps

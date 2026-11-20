@@ -16,24 +16,26 @@
 #                     boot, from the U-Boot env's housing= line)
 #
 # The image is built for the PB4 housing. Edits /etc/raptor.conf's
-# [ircut], writes or removes /etc/wlight.conf, records the choice in
-# /etc/housing and restarts Raptor (and wlight).
+# [ircut] and [wlight] enabled (the web console's White light switch),
+# records the choice in /etc/housing and restarts Raptor.
 
 RC=/etc/raptor.conf
-DEF=/usr/share/raptor
 
 restart=1
 [ "$1" = --boot ] && { restart=0; shift; }
 
-# ircut KEY VALUE: set KEY in [ircut], adding it if missing; VALUE "" deletes
-ircut() {
-	awk -v k="$1" -v v="$2" '
+# conf SECTION KEY VALUE: set KEY in [SECTION], adding it (and the
+# section) if missing; VALUE "" deletes
+conf() {
+	awk -v sec="[$1]" -v k="$2" -v v="$3" '
 		function out() { if (!done && v != "") print k " = " v; done = 1 }
-		/^\[/ { if (in_s) out(); in_s = ($0 == "[ircut]") }
+		/^\[/ { if (in_s) out(); in_s = ($0 == sec); if (in_s) seen = 1 }
 		in_s && $0 ~ "^" k "[ \t]*=" { if (v != "") print k " = " v; done = 1; next }
 		{ print }
-		END { if (in_s) out() }' "$RC" > "$RC.new" && mv "$RC.new" "$RC"
+		END { if (in_s) out(); if (!seen && v != "") { print ""; print sec; print k " = " v } }' \
+		"$RC" > "$RC.new" && mv "$RC.new" "$RC"
 }
+ircut() { conf ircut "$1" "$2"; }
 
 current() {
 	cat /etc/housing 2>/dev/null || echo pb4
@@ -45,7 +47,7 @@ pb4)
 	ircut pwm_irled_mask 12
 	ircut pwm_irled_duty 8500
 	ircut pwm_irled_period 10000
-	[ -f /etc/wlight.conf ] || cp "$DEF/wlight.conf.default" /etc/wlight.conf
+	conf wlight enabled true
 	lamp off
 	echo pb4 > /etc/housing
 	;;
@@ -54,15 +56,14 @@ ceiling)
 	ircut pwm_irled_mask ""
 	ircut pwm_irled_duty ""
 	ircut pwm_irled_period ""
-	[ $restart = 1 ] && /etc/init.d/S97wlight stop >/dev/null 2>&1
-	rm -f /etc/wlight.conf
+	conf wlight enabled false
 	lamp off
 	echo ceiling > /etc/housing
 	;;
 "")
 	echo "set for: $(current)"
-	grep -E '^(trigger|pwm_irled|night_threshold|day_threshold|hysteresis_sec) ' "$RC"
-	[ -f /etc/wlight.conf ] && echo "wlight: on" || echo "wlight: off"
+	awk '/^\[/ { in_s = ($0 == "[ircut]") } in_s && /^(trigger|pwm_irled|night_threshold|day_threshold|hysteresis_sec) /' "$RC"
+	grep -A8 '^\[wlight\]' "$RC" | grep -m1 '^enabled' | sed 's/^/wlight /'
 	exit 0
 	;;
 *) echo "usage: housing [pb4|ceiling]"; exit 1 ;;
@@ -70,6 +71,5 @@ esac
 
 if [ $restart = 1 ]; then
 	/etc/init.d/S96raptor restart
-	[ -f /etc/wlight.conf ] && /etc/init.d/S97wlight restart
 fi
 echo "set for: $(current)"

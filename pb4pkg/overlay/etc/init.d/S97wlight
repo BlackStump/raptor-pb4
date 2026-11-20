@@ -1,10 +1,10 @@
 #!/bin/sh
-# S97wlight -- motion white light (opt-in: runs only if /etc/wlight.conf exists)
+# S97wlight -- motion white light. Always runs; raptor.conf [wlight] enabled
+# (web console: Recording -> White light) decides whether it does anything.
 
 PIDFILE=/var/run/wlight.pid
 
 start() {
-	[ -f /etc/wlight.conf ] || exit 0
 	printf "Starting wlight: "
 	start-stop-daemon -S -b -m -p "$PIDFILE" -x /usr/bin/wlight && echo "OK" || echo "FAIL"
 }
