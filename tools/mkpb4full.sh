@@ -1,8 +1,13 @@
 #!/bin/sh
 # mkpb4full.sh -- one PB4's complete 8 MB flash image, for the CH347.
 #
-#   sh tools/mkpb4full.sh NAME MAC
+#   sh tools/mkpb4full.sh NAME MAC [pb4|ceiling]
 #   sh tools/mkpb4full.sh garage1 f6:70:00:0d:25:71
+#   sh tools/mkpb4full.sh hall2 f6:70:00:0d:25:72 ceiling
+#
+# The housing (default pb4: IR + white LEDs, wlight on) goes into the env
+# as housing=; S95pb4 applies it on first boot (`housing` on the camera
+# changes it later). One image file covers both kinds of housing.
 #
 # Writes pb4-NAME-full.bin (and its md5) in the current directory:
 #
@@ -28,7 +33,9 @@ ROOTFS=${ROOTFS:-$OUT/images/rootfs.squashfs}
 
 NAME=$1
 MAC=$(echo "$2" | tr 'A-F' 'a-f')
-[ -n "$NAME" ] && [ -n "$MAC" ] || { echo "usage: $0 NAME MAC"; exit 1; }
+HOUSING=${3:-pb4}
+[ -n "$NAME" ] && [ -n "$MAC" ] || { echo "usage: $0 NAME MAC [pb4|ceiling]"; exit 1; }
+case "$HOUSING" in pb4 | ceiling) ;; *) echo "housing '$HOUSING' is not pb4 or ceiling"; exit 1 ;; esac
 echo "$MAC" | grep -Eq '^([0-9a-f]{2}:){5}[0-9a-f]{2}$' ||
     { echo "MAC '$2' is not xx:xx:xx:xx:xx:xx"; exit 1; }
 # bit 0 of the first byte set = multicast, never a NIC's address
@@ -64,6 +71,7 @@ trap 'rm -rf "$T"' EXIT
 cat > "$T/env.txt" <<EOF
 baudrate=115200
 ethaddr=$MAC
+housing=$HOUSING
 baseaddr=0xA1000000
 kernaddr=0x00050000
 kernsize=0x200000
@@ -79,7 +87,7 @@ bootdelay=1
 EOF
 "$MKENV" -s 0x10000 -o "$T/env.bin" "$T/env.txt"
 
-IMG=pb4-$NAME-full.bin
+IMG=pb4-$NAME-$HOUSING-full.bin
 echo ">>> $IMG"
 # 8 MB of erased flash, then each part at its offset
 head -c $((0x800000)) /dev/zero | tr '\000' '\377' > "$IMG"
@@ -101,5 +109,6 @@ back "$KERNEL" 0x050000 kernel
 back "$ROOTFS" 0x250000 rootfs
 [ "$(wc -c < "$IMG")" = $((0x800000)) ] || { echo "  image is not 8 MB"; exit 1; }
 strings -n 8 "$IMG" | grep -q "^ethaddr=$MAC$" || { echo "  ethaddr not in the image"; exit 1; }
-echo "  ok: 8 MB, all parts read back, ethaddr=$MAC"
+strings -n 8 "$IMG" | grep -q "^housing=$HOUSING$" || { echo "  housing not in the image"; exit 1; }
+echo "  ok: 8 MB, all parts read back, ethaddr=$MAC, housing=$HOUSING"
 md5sum "$IMG" | tee "$IMG.md5" | sed 's/^/  /'

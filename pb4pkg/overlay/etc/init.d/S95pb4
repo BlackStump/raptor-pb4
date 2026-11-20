@@ -26,6 +26,15 @@ start)
 		echo "$c,12,0,10000,0,0,0,0" > /proc/driver/pwm 2>/dev/null
 	done
 	echo "PB4: IR-cut pins ready, lamps off"
+	# First boot of a full-flash image: the housing it was made for is in
+	# the U-Boot env (mkpb4full.sh NAME MAC ceiling). Applied once; after
+	# that `housing` on the camera decides.
+	if [ ! -f /etc/housing ]; then
+		h=$(fw_printenv -n housing 2>/dev/null)
+		case "$h" in
+		pb4 | ceiling) housing --boot "$h" ;;
+		esac
+	fi
 	;;
 stop) ;;
 *) echo "Usage: $0 {start|stop}"; exit 1 ;;

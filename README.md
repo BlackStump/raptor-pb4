@@ -151,6 +151,26 @@ the stock PB4 sends them (`RuleEngine/CellMotionDetector/Motion`,
 `IsMotion`). To turn it off, `[motion] enabled = false`, then restart
 `S96raptor` and `S96onvifserver`. `wlight` keeps its own detection for the white LEDs.
 
+## Housings
+
+One image serves both housings; the camera is told which it is in:
+
+    housing pb4       IR + white LED board (white PWM 2, IR PWM 3);
+                      ric lights the IR, wlight the white on motion
+    housing ceiling   IR board with its own light sensor that switches
+                      its IR itself; ric only switches the IR-cut (gain),
+                      no white light
+    housing           show the current setting
+
+The image starts as `pb4`. A full-flash image can carry the housing in
+the U-Boot env (`mkpb4full.sh NAME MAC ceiling`), applied by S95pb4 on
+first boot.
+
+The ceiling board's sensor wire stays off the PB4. It gives 0 V in light
+and 5 V dark, above the PB4's 1.8 V ADC, and on this module the CDS pin
+reached no ADC channel or GPIO input even through a divider (2026-11-20).
+The vendor firmware in this housing ran without it for years.
+
 ## Audio
 
 The mic is on both RTSP streams as G.711 (PCMU, 8 kHz), on by default;

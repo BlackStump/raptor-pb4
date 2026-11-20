@@ -48,8 +48,10 @@ overlay() {
         "$OVL"/usr/bin/rhd "$OVL"/usr/bin/rcd "$OVL"/usr/bin/rmd "$OVL"/usr/bin/rad "$OVL"/usr/bin/ydiff "$OVL"/usr/lib/*
     chmod 644 "$OVL"/usr/share/raptor/*
 
-    cp "$PKG/overlay/usr/bin/lamp" "$PKG/overlay/usr/bin/wlight" "$OVL/usr/bin/"
+    cp "$PKG/overlay/usr/bin/lamp" "$PKG/overlay/usr/bin/wlight" "$PKG/overlay/usr/bin/housing" "$OVL/usr/bin/"
     cp "$PKG/overlay/etc/wlight.conf" "$OVL/etc/wlight.conf"
+    # housing pb4 puts it back after housing ceiling removed it
+    cp "$PKG/overlay/etc/wlight.conf" "$OVL/usr/share/raptor/wlight.conf.default"
     cp "$PKG/overlay/etc/init.d/S97wlight" "$OVL/etc/init.d/S97wlight"
 
     cp "$PKG/overlay/etc/raptor.conf" "$OVL/etc/raptor.conf"
